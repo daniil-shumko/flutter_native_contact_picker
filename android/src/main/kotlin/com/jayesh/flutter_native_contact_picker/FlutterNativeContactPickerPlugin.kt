@@ -45,17 +45,15 @@ public class FlutterNativeContactPickerPlugin: FlutterPlugin, MethodCallHandler,
 
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
-    if (call.method == "selectContact") {
-      if (pendingResult != null) {
-        pendingResult!!.error("multiple_requests", "Cancelled by a second request.", null)
-        pendingResult = null
+    when (call.method) {
+      "selectContact" -> {
+        val intent = Intent(Intent.ACTION_PICK).apply {
+          type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
+        }
+        activity?.startActivityForResult(intent, PICK_CONTACT)
+        pendingResult = result
       }
-      pendingResult = result
-
-      val i = Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
-      activity?.startActivityForResult(i, PICK_CONTACT)
-    } else {
-      result.notImplemented()
+      else -> result.notImplemented()
     }
   }
 
@@ -95,26 +93,32 @@ public class FlutterNativeContactPickerPlugin: FlutterPlugin, MethodCallHandler,
     }
 
     data?.data?.let { contactUri ->
-      val cursor = activity!!.contentResolver.query(contactUri, null, null, null, null)
+      val cursor = activity!!.contentResolver.query(
+        contactUri,
+        arrayOf(
+          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+          ContactsContract.CommonDataKinds.Phone.NUMBER
+        ),
+        null,
+        null,
+        null
+      )
       cursor?.use {
-        it.moveToFirst()
-        // val phoneType = it.getInt(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE))
-        // val customLabel = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.LABEL))
-        // val label = ContactsContract.CommonDataKinds.Email.getTypeLabel(activity!!.resources, phoneType, customLabel) as String
-        val number = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
-        val fullName = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
-        // val phoneNumber = HashMap<String, Any>()
-        // phoneNumber.put("number", number)
-        // phoneNumber.put("label", label)
-        val contact = HashMap<String, Any>()
-        contact.put("fullName", fullName)
-        contact.put("phoneNumbers", listOf(number))
-        pendingResult?.success(contact)
+        if (it.moveToFirst()) {
+          val number = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
+          val fullName = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
+          val contact = HashMap<String, Any>()
+          contact["fullName"] = fullName
+          contact["phoneNumbers"] = listOf(number)
+          contact["selectedPhoneNumber"] = number
+          pendingResult?.success(contact)
+        } else {
+          pendingResult?.success(null)
+        }
         pendingResult = null
-        return@use true
+        return true
       }
     }
-
     pendingResult?.success(null)
     pendingResult = null
     return true

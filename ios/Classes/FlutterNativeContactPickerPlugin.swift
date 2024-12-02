@@ -66,15 +66,16 @@ class PickerHandler: NSObject, CNContactPickerDelegate  {
 
 class SinglePickerHandler: PickerHandler {
     @available(iOS 9.0, *)
-    public func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) {
-
-        var data = Dictionary<String, Any>()
-        data["fullName"] = CNContactFormatter.string(from: contact, style: CNContactFormatterStyle.fullName)
-
-        let numbers: Array<String> = contact.phoneNumbers.compactMap { $0.value.stringValue as String }
-        data["phoneNumbers"] = numbers
-
-        result(data)
+    public func contactPicker(_ picker: CNContactPickerViewController, didSelect contactProperty: CNContactProperty) {
+        if contactProperty.key == CNContactPhoneNumbersKey,
+           let phoneNumberValue = contactProperty.value as? CNPhoneNumber {
+            var data = Dictionary<String, Any>()
+            let contact = contactProperty.contact
+            data["fullName"] = CNContactFormatter.string(from: contact, style: CNContactFormatterStyle.fullName)
+            data["phoneNumbers"] = [phoneNumberValue.stringValue]
+            data["selectedPhoneNumber"] = phoneNumberValue.stringValue
+            result(data)
+        }
     }
 }
 
