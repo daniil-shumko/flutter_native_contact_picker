@@ -14,12 +14,17 @@ class MethodChannelFlutterNativeContactPicker
   final methodChannel = const MethodChannel('flutter_native_contact_picker');
 
   @override
-  Future<Contact?> selectContact() async {
+  Future<Contact?> selectContact({bool singlePhoneNumber = false}) async {
+    final Map<String, dynamic> params = {
+      'singlePhoneNumber': singlePhoneNumber,
+    };
+
     final Map<dynamic, dynamic>? result = await methodChannel
-        .invokeMethod<Map<dynamic, dynamic>?>('selectContact');
+        .invokeMethod<Map<dynamic, dynamic>?>('selectContact', params);
     if (result == null) {
       return null;
     }
+
     return Contact.fromMap(result);
   }
 

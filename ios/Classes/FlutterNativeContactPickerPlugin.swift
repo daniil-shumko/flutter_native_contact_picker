@@ -14,6 +14,7 @@ public class FlutterNativeContactPickerPlugin: NSObject, FlutterPlugin, CNContac
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
    if("selectContact" == call.method || "selectContacts" == call.method) {
+    
         if(_delegate != nil) {
             _delegate!.result(FlutterError(code: "multiple_requests", message: "Cancelled by a second request.", details: nil));
             _delegate = nil;
@@ -21,7 +22,9 @@ public class FlutterNativeContactPickerPlugin: NSObject, FlutterPlugin, CNContac
 
           if #available(iOS 9.0, *){
               let single = call.method == "selectContact";
-              _delegate = single ? SinglePickerHandler(result: result) : MultiPickerHandler(result: result);
+              let args = call.arguments as? [String: Any];
+              let singlePhoneNumber = (args?["singlePhoneNumber"] as? Bool) ?? false;
+              _delegate = single ? SinglePickerHandler(result: result, singlePhoneNumber: singlePhoneNumber) : MultiPickerHandler(result: result);
               let contactPicker = CNContactPickerViewController()
               contactPicker.delegate = _delegate
               contactPicker.displayedPropertyKeys = [CNContactPhoneNumbersKey]
@@ -65,6 +68,13 @@ class PickerHandler: NSObject, CNContactPickerDelegate  {
 }
 
 class SinglePickerHandler: PickerHandler {
+    let singlePhoneNumber: Bool
+    
+    required init(result: @escaping FlutterResult, singlePhoneNumber: Bool) {
+        self.singlePhoneNumber = singlePhoneNumber
+        super.init(result: result)
+    }
+    
     @available(iOS 9.0, *)
     public func contactPicker(_ picker: CNContactPickerViewController, didSelect contactProperty: CNContactProperty) {
         if contactProperty.key == CNContactPhoneNumbersKey,
@@ -72,7 +82,13 @@ class SinglePickerHandler: PickerHandler {
             var data = Dictionary<String, Any>()
             let contact = contactProperty.contact
             data["fullName"] = CNContactFormatter.string(from: contact, style: CNContactFormatterStyle.fullName)
-            data["phoneNumbers"] = [phoneNumberValue.stringValue]
+            
+            if singlePhoneNumber {
+                data["phoneNumbers"] = [phoneNumberValue.stringValue]
+            } else {
+                let numbers: [String] = contact.phoneNumbers.compactMap { $0.value.stringValue }
+                data["phoneNumbers"] = numbers
+            }
             data["selectedPhoneNumber"] = phoneNumberValue.stringValue
             result(data)
         }
@@ -97,4 +113,3 @@ class MultiPickerHandler: PickerHandler {
          result(selectedContacts)
     }
 }
-

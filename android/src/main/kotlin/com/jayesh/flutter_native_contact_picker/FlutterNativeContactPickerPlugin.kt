@@ -47,6 +47,7 @@ public class FlutterNativeContactPickerPlugin: FlutterPlugin, MethodCallHandler,
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
     when (call.method) {
       "selectContact" -> {
+        val singlePhoneNumber = call.argument<Boolean>("singlePhoneNumber") ?: false
         val intent = Intent(Intent.ACTION_PICK).apply {
           type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
         }
@@ -109,14 +110,33 @@ public class FlutterNativeContactPickerPlugin: FlutterPlugin, MethodCallHandler,
           val fullName = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
           val contact = HashMap<String, Any>()
           contact["fullName"] = fullName
-          contact["phoneNumbers"] = listOf(number)
+
+          // Query all phone numbers for this contact
+          val phones = activity!!.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} = ?",
+            arrayOf(fullName),
+            null
+          )
+
+          val allNumbers = mutableListOf<String>()
+          phones?.use { phoneCursor ->
+            while (phoneCursor.moveToNext()) {
+              val phoneNo = phoneCursor.getString(phoneCursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
+              allNumbers.add(phoneNo)
+            }
+          }
+
+          val singlePhoneNumber = call.argument<Boolean>("singlePhoneNumber") ?: false
+          if (singlePhoneNumber) {
+            contact["phoneNumbers"] = listOf(number)
+          } else {
+            contact["phoneNumbers"] = allNumbers
+          }
           contact["selectedPhoneNumber"] = number
           pendingResult?.success(contact)
-        } else {
-          pendingResult?.success(null)
         }
-        pendingResult = null
-        return true
       }
     }
     pendingResult?.success(null)
