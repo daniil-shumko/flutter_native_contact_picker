@@ -11,7 +11,6 @@ import android.app.Activity
 import android.app.Activity.RESULT_OK
 import android.content.Intent
 import android.provider.ContactsContract
-import android.database.Cursor
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.PluginRegistry
@@ -56,10 +55,15 @@ public class FlutterNativeContactPickerPlugin: FlutterPlugin, MethodCallHandler,
         pendingResult = result
         selectPhoneNumber = call.method == "selectPhoneNumber"
 
-        val intent = Intent(Intent.ACTION_PICK).apply {
-          type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
+        try {
+          val intent = Intent(Intent.ACTION_PICK).apply {
+            type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
+          }
+          activity?.startActivityForResult(intent, PICK_CONTACT)
+        } catch (e: Exception) {
+          pendingResult?.error("intent_error", "Could not launch contact picker", null)
+          pendingResult = null
         }
-        activity?.startActivityForResult(intent, PICK_CONTACT)
       }
       else -> result.notImplemented()
     }
@@ -91,55 +95,58 @@ public class FlutterNativeContactPickerPlugin: FlutterPlugin, MethodCallHandler,
     if (requestCode != PICK_CONTACT) {
       return false
     }
-    if (resultCode != RESULT_OK) {
+    if (resultCode != RESULT_OK || data?.data == null) {
       pendingResult?.success(null)
       pendingResult = null
       return true
     }
 
-    data?.data?.let { contactUri ->
-      val cursor = activity!!.contentResolver.query(contactUri, null, null, null, null)
-      cursor?.use {
-        if (it.moveToFirst()) {
-          val number = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
-          val fullName = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
-          
-          // Get all phone numbers for this contact
-          val phoneNumbers = mutableListOf<String>()
-          val contactId = it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID))
-          val phonesCursor = activity!!.contentResolver.query(
-            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            null,
-            ContactsContract.CommonDataKinds.Phone.CONTACT_ID + " = ?",
-            arrayOf(contactId),
-            null
-          )
-          
-          phonesCursor?.use { phones ->
-            while (phones.moveToNext()) {
-              val phoneNumber = phones.getString(phones.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER))
-              phoneNumbers.add(phoneNumber)
-            }
+    try {
+      val contactUri = data.data!!
+      activity?.contentResolver?.query(
+        contactUri,
+        arrayOf(
+          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+          ContactsContract.CommonDataKinds.Phone.NUMBER
+        ),
+        null,
+        null,
+        null
+      )?.use { cursor ->
+        if (cursor.moveToFirst()) {
+          val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+          val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+          if (nameIndex == -1 || numberIndex == -1) {
+            pendingResult?.error("invalid_cursor", "Could not find required columns in contact data", null)
+            pendingResult = null
+            return true
           }
+
+          val fullName = cursor.getString(nameIndex) ?: ""
+          val number = cursor.getString(numberIndex) ?: ""
 
           val contact = HashMap<String, Any>()
           contact["fullName"] = fullName
-          contact["phoneNumbers"] = phoneNumbers
-          
+          contact["phoneNumbers"] = listOf(number)
           if (selectPhoneNumber) {
             contact["selectedPhoneNumber"] = number
           }
-          
+
           pendingResult?.success(contact)
           pendingResult = null
           return true
         }
       }
-    }
 
-    pendingResult?.success(null)
-    pendingResult = null
-    return true
+      pendingResult?.error("no_contact", "Could not read contact data", null)
+      pendingResult = null
+      return true
+    } catch (e: Exception) {
+      pendingResult?.error("contact_picker_error", e.message, null)
+      pendingResult = null
+      return true
+    }
   }
 
   companion object {
